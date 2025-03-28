@@ -1,0 +1,299 @@
+sudo adduser hadoop sudo
+su - hadoop
+sudo nano
+sudo nano /etc/sudoers
+sudo apt install default-jdk
+java --version
+wget https://archive.apache.org/dist/hadoop/common/hadoop-3.3.4/hadoop-3.3.4.tar.gz
+tar -xzvf hadoop-3.3.4.tar.gz
+sudo mkdir /opt/hadoop
+sudo mv hadoop-3.3.4/* /opt/hadoop
+nano ~/.bashrc
+
+export JAVA_HOME=/usr
+export HADOOP_HOME=/opt/hadoop
+export PATH=$PATH:$JAVA_HOME/bin:$HADOOP_HOME/bin:$HADOOP_HOME/sbin
+export HADOOP_MAPRED_HOME=$HADOOP_HOME 
+export HADOOP_COMMON_HOME=$HADOOP_HOME 
+
+export HADOOP_HDFS_HOME=$HADOOP_HOME 
+export YARN_HOME=$HADOOP_HOME 
+export HADOOP_COMMON_LIB_NATIVE_DIR=$HADOOP_HOME/lib/native
+export HADOOP_INSTALL=$HADOOP_HOME
+source ~/.bashrc
+
+sudo nano $HADOOP_HOME/etc/hadoop/hadoop-env.sh
+export JAVA_HOME=/usr
+
+mkdir /home/hadoop/hdfs/name
+mkdir /home/hadoop/hdfs/data
+sudo chmod -R 777 /opt/hadoop
+
+sudo nano /opt/hadoop/etc/hadoop/hdfs-site.xml
+
+<configuration>
+<property>
+<name>dfs.replication</name>
+<value>1</value>
+</property>
+<property>
+<name>dfs.namenode.name.dir</name>
+<value>file:/home/hadoop/hdfs/name</value>
+</property>
+<property>
+<name>dfs.datanode.data.dir</name>
+<value>file:/home/hadoop/hdfs/data</value>
+</property>
+</configuration>
+-
+sudo nano /opt/hadoop/etc/hadoop/yarn-site.xml
+
+<property>
+<name>yarn.nodemanager.aux-services</name>
+<value>mapreduce_shuffle</value>
+</property>
+<property>
+<name>yarn.nodemanager.aux-services.mapreduce.shuffle.class</name>
+<value>org.apache.hadoop.mapred.ShuffleHandler</value>
+</property>
+
+sudo nano /opt/hadoop/etc/hadoop/mapred-site.xml
+<property>
+<name>mapreduce.framework.name</name>
+<value>yarn</value>
+</property>
+
+hdfs namenode -format
+start-dfs.sh
+start-yarn.sh
+jps
+
+HIVE
+rm 
+wget https://downloads.apache.org/hive/hive-3.1.2/apache-hive-3.1.2-bin.tar.gz
+tar xzf apache-hive-3.1.2-bin.tar.gz
+sudo mkdir /opt/hive
+sudo mv apache-hive-3.1.2-bin/* /opt/hive
+sudo chmod 777 -R /opt/hive
+sudo nano ~/.bashrc
+export HIVE_HOME=/opt/hive
+export PATH=$PATH:$HIVE_HOME/bin
+source ~/.bashrc
+
+sudo nano $HIVE_HOME/bin/hive-config.sh
+export HADOOP_HOME=/opt/hive
+source ~/.bashrc
+
+$HIVE_HOME/bin/schematool -dbType derby -initSchema
+
+PIG
+wget https://downloads.apache.org/pig/pig-0.17.0/pig-0.17.0.tar.gz
+tar -xzf pig-0.17.0.tar.gz
+sudo mkdir /opt/pig
+sudo mv ./pig-0.17.0/* /opt/pig
+sudo chmod 777 -R /opt/pig
+sudo nano ~/.bashrc
+
+export PIG_HOME=/opt/pig
+export HADOOP_CONF_DIR=$HADOOP_HOME/etc/hadoop
+export PIG_CLASSPATH=$HADOOP_CONF_DIR
+export PATH=$PATH:$JAVA_HOME/bin:$HADOOP_HOME/bin:$HADOOP_HOME/sbin:$HIVE_HOME/bin:$PIG_HOME/bin
+
+source ~/.bashrc
+________________________________________________________________________________________________
+sudo apt-get install wget
+hadoop fs -mkdir -p /user/seliz_koshy2
+hadoop fs -mkdir -p /user/cluster-seliz-m/newcsv/
+hadoop fs -mkdir -p /user/seliz_koshy2/cluster-seliz-m/MapReduce/
+hadoop fs -cp gs://dataproc-staging-us-central1-1031731324489-ozzu0ijg/google-cloud-dataproc-metainfo/842f89cf-30e0-405a-9452-1ea0f7eedea3/cluster-seliz-m/Assignment1/amazon_reviews.csv cluster-seliz-m/newcsv/amazon_reviews.csv
+
+
+use reviewsdb;
+show tables;
+desc amazon;
+
+
+CREATE TABLE IF NOT EXISTS amazon1 ( reviewerID String, reviewText String,category String,class float)
+row format delimited fields terminated by ',';
+
+load data inpath 'cluster-seliz-m/newcsv/amazon_reviews.csv' overwrite into table amazon1;
+SELECT * FROM amazon1 LIMIT 5;
+
+create table processed_data as select reviewerID, REGEXP_REPLACE(reviewtext, '[^0-9A-Za-z ]+', '') as reviewtext,category,class from amazon1;
+SELECT * FROM processed_data LIMIT 5;
+desc processed_data;
+
+create table spam_data as select * from processed_data where class=1.0;
+SELECT reviewerID,reviewtext FROM spam_data ORDER BY reviewerID DESC LIMIT 10;
+
+
+create table ham_data as select * from processed_data where class=0.0;
+SELECT reviewerID,reviewtext FROM ham_data ORDER BY reviewerID DESC LIMIT 10;
+
+create table top10spamdata as SELECT DISTINCT reviewerID,reviewtext FROM spam_data DESC LIMIT 10;
+create table top10hamdata as SELECT DISTINCT reviewerID,reviewtext FROM ham_data DESC LIMIT 10;
+
+insert overwrite directory 'hdfs://cluster-seliz-m/newcsv/top10spamdata' row format delimited fields terminated by ',' select * from top10spamdata;
+insert overwrite directory 'hdfs://cluster-seliz-m/newcsv/top10hamdata' row format delimited fields terminated by ',' select * from top10hamdata;
+
+hadoop fs -cp hdfs://cluster-seliz-m/newcsv/top10spamdata/000000_0 gs://dataproc-staging-us-central1-1031731324489-ozzu0ijg
+hadoop fs -cp hdfs://cluster-seliz-m/newcsv/top10hamdata/000000_0 gs://dataproc-staging-us-central1-1031731324489-ozzu0ijg
+
+hadoop fs -mkdir -p /user/seliz_koshy2/cluster-seliz-m/MapReduce/
+
+hadoop fs -cp gs://dataproc-staging-us-central1-1031731324489-ozzu0ijg/google-cloud-dataproc-metainfo/842f89cf-30e0-405a-9452-1ea0f7eedea3/cluster-seliz-m/Assignment1/Mapper_programs/mapper_1.py /user/seliz_koshy2/cluster-seliz-m/MapReduce
+hadoop fs -cp gs://dataproc-staging-us-central1-1031731324489-ozzu0ijg/google-cloud-dataproc-metainfo/842f89cf-30e0-405a-9452-1ea0f7eedea3/cluster-seliz-m/Assignment1/Mapper_programs/mapper_2.py /user/seliz_koshy2/cluster-seliz-m/MapReduce
+hadoop fs -cp gs://dataproc-staging-us-central1-1031731324489-ozzu0ijg/google-cloud-dataproc-metainfo/842f89cf-30e0-405a-9452-1ea0f7eedea3/cluster-seliz-m/Assignment1/Mapper_programs/mapper_3.py /user/seliz_koshy2/cluster-seliz-m/MapReduce
+hadoop fs -cp gs://dataproc-staging-us-central1-1031731324489-ozzu0ijg/google-cloud-dataproc-metainfo/842f89cf-30e0-405a-9452-1ea0f7eedea3/cluster-seliz-m/Assignment1/Mapper_programs/mapper_4.py /user/seliz_koshy2/cluster-seliz-m/MapReduce
+
+hadoop fs -cp gs://dataproc-staging-us-central1-1031731324489-ozzu0ijg/google-cloud-dataproc-metainfo/842f89cf-30e0-405a-9452-1ea0f7eedea3/cluster-seliz-m/Assignment1/Mapper_programs/reducer_1.py /user/seliz_koshy2/cluster-seliz-m/MapReduce
+hadoop fs -cp gs://dataproc-staging-us-central1-1031731324489-ozzu0ijg/google-cloud-dataproc-metainfo/842f89cf-30e0-405a-9452-1ea0f7eedea3/cluster-seliz-m/Assignment1/Mapper_programs/reducer_2.py /user/seliz_koshy2/cluster-seliz-m/MapReduce
+hadoop fs -cp gs://dataproc-staging-us-central1-1031731324489-ozzu0ijg/google-cloud-dataproc-metainfo/842f89cf-30e0-405a-9452-1ea0f7eedea3/cluster-seliz-m/Assignment1/Mapper_programs/reducer_3.py /user/seliz_koshy2/cluster-seliz-m/MapReduce
+
+hadoop fs -cp gs://dataproc-staging-us-central1-1031731324489-ozzu0ijg/google-cloud-dataproc-metainfo/842f89cf-30e0-405a-9452-1ea0f7eedea3/cluster-seliz-m/Assignment1/spam_text_files/A0000488123JA1KQJTEM8.txt /user/seliz_koshy2/cluster-seliz-m/MapReduce
+hadoop fs -cp gs://dataproc-staging-us-central1-1031731324489-ozzu0ijg/google-cloud-dataproc-metainfo/842f89cf-30e0-405a-9452-1ea0f7eedea3/cluster-seliz-m/Assignment1/spam_text_files/A00005303588WHRQZ6N4L.txt /user/seliz_koshy2/cluster-seliz-m/MapReduce
+hadoop fs -cp gs://dataproc-staging-us-central1-1031731324489-ozzu0ijg/google-cloud-dataproc-metainfo/842f89cf-30e0-405a-9452-1ea0f7eedea3/cluster-seliz-m/Assignment1/spam_text_files/A00025741CVPCXCF3NHMR.txt /user/seliz_koshy2/cluster-seliz-m/MapReduce
+hadoop fs -cp gs://dataproc-staging-us-central1-1031731324489-ozzu0ijg/google-cloud-dataproc-metainfo/842f89cf-30e0-405a-9452-1ea0f7eedea3/cluster-seliz-m/Assignment1/spam_text_files/A000285218JCFNDXRN02X.txt /user/seliz_koshy2/cluster-seliz-m/MapReduce
+hadoop fs -cp gs://dataproc-staging-us-central1-1031731324489-ozzu0ijg/google-cloud-dataproc-metainfo/842f89cf-30e0-405a-9452-1ea0f7eedea3/cluster-seliz-m/Assignment1/spam_text_files/A00028781NF0U7YEN9U19.txt /user/seliz_koshy2/cluster-seliz-m/MapReduce
+hadoop fs -cp gs://dataproc-staging-us-central1-1031731324489-ozzu0ijg/google-cloud-dataproc-metainfo/842f89cf-30e0-405a-9452-1ea0f7eedea3/cluster-seliz-m/Assignment1/spam_text_files/A00037441I8XOQJSUWCAG.txt /user/seliz_koshy2/cluster-seliz-m/MapReduce
+hadoop fs -cp gs://dataproc-staging-us-central1-1031731324489-ozzu0ijg/google-cloud-dataproc-metainfo/842f89cf-30e0-405a-9452-1ea0f7eedea3/cluster-seliz-m/Assignment1/spam_text_files/A00044782UB564I4SGA0X.txt /user/seliz_koshy2/cluster-seliz-m/MapReduce
+hadoop fs -cp gs://dataproc-staging-us-central1-1031731324489-ozzu0ijg/google-cloud-dataproc-metainfo/842f89cf-30e0-405a-9452-1ea0f7eedea3/cluster-seliz-m/Assignment1/spam_text_files/A00061202IT7XNIEW32MA.txt /user/seliz_koshy2/cluster-seliz-m/MapReduce
+hadoop fs -cp gs://dataproc-staging-us-central1-1031731324489-ozzu0ijg/google-cloud-dataproc-metainfo/842f89cf-30e0-405a-9452-1ea0f7eedea3/cluster-seliz-m/Assignment1/spam_text_files/A00062163COOP0O1EIMZL.txt /user/seliz_koshy2/cluster-seliz-m/MapReduce
+hadoop fs -cp gs://dataproc-staging-us-central1-1031731324489-ozzu0ijg/google-cloud-dataproc-metainfo/842f89cf-30e0-405a-9452-1ea0f7eedea3/cluster-seliz-m/Assignment1/spam_text_files/A00062283LKXEZFY9NQ8B.txt /user/seliz_koshy2/cluster-seliz-m/MapReduce
+
+hadoop fs -cp gs://dataproc-staging-us-central1-1031731324489-ozzu0ijg/google-cloud-dataproc-metainfo/842f89cf-30e0-405a-9452-1ea0f7eedea3/cluster-seliz-m/Assignment1/spam_text_files/A0000488123JA1KQJTEM8.txt /user/seliz_koshy2/cluster-seliz-m/MapReduce
+hadoop fs -cp gs://dataproc-staging-us-central1-1031731324489-ozzu0ijg/google-cloud-dataproc-metainfo/842f89cf-30e0-405a-9452-1ea0f7eedea3/cluster-seliz-m/Assignment1/spam_text_files/A0000488123JA1KQJTEM8.txt /user/seliz_koshy2/cluster-seliz-m/MapReduce
+hadoop fs -cp gs://dataproc-staging-us-central1-1031731324489-ozzu0ijg/google-cloud-dataproc-metainfo/842f89cf-30e0-405a-9452-1ea0f7eedea3/cluster-seliz-m/Assignment1/spam_text_files/A0000488123JA1KQJTEM8.txt /user/seliz_koshy2/cluster-seliz-m/MapReduce
+hadoop fs -cp gs://dataproc-staging-us-central1-1031731324489-ozzu0ijg/google-cloud-dataproc-metainfo/842f89cf-30e0-405a-9452-1ea0f7eedea3/cluster-seliz-m/Assignment1/spam_text_files/A0000488123JA1KQJTEM8.txt /user/seliz_koshy2/cluster-seliz-m/MapReduce
+hadoop fs -cp gs://dataproc-staging-us-central1-1031731324489-ozzu0ijg/google-cloud-dataproc-metainfo/842f89cf-30e0-405a-9452-1ea0f7eedea3/cluster-seliz-m/Assignment1/spam_text_files/A0000488123JA1KQJTEM8.txt /user/seliz_koshy2/cluster-seliz-m/MapReduce
+hadoop fs -cp gs://dataproc-staging-us-central1-1031731324489-ozzu0ijg/google-cloud-dataproc-metainfo/842f89cf-30e0-405a-9452-1ea0f7eedea3/cluster-seliz-m/Assignment1/spam_text_files/A0000488123JA1KQJTEM8.txt /user/seliz_koshy2/cluster-seliz-m/MapReduce
+hadoop fs -cp gs://dataproc-staging-us-central1-1031731324489-ozzu0ijg/google-cloud-dataproc-metainfo/842f89cf-30e0-405a-9452-1ea0f7eedea3/cluster-seliz-m/Assignment1/spam_text_files/A0000488123JA1KQJTEM8.txt /user/seliz_koshy2/cluster-seliz-m/MapReduce
+hadoop fs -cp gs://dataproc-staging-us-central1-1031731324489-ozzu0ijg/google-cloud-dataproc-metainfo/842f89cf-30e0-405a-9452-1ea0f7eedea3/cluster-seliz-m/Assignment1/spam_text_files/A0000488123JA1KQJTEM8.txt /user/seliz_koshy2/cluster-seliz-m/MapReduce
+hadoop fs -cp gs://dataproc-staging-us-central1-1031731324489-ozzu0ijg/google-cloud-dataproc-metainfo/842f89cf-30e0-405a-9452-1ea0f7eedea3/cluster-seliz-m/Assignment1/spam_text_files/A0000488123JA1KQJTEM8.txt /user/seliz_koshy2/cluster-seliz-m/MapReduce
+hadoop fs -cp gs://dataproc-staging-us-central1-1031731324489-ozzu0ijg/google-cloud-dataproc-metainfo/842f89cf-30e0-405a-9452-1ea0f7eedea3/cluster-seliz-m/Assignment1/spam_text_files/A0000488123JA1KQJTEM8.txt /user/seliz_koshy2/cluster-seliz-m/MapReduce
+
+important
+hadoop fs -mkdir -p /assignment
+
+sudo gsutil cp -r gs://dataproc-staging-us-central1-1031731324489-ozzu0ijg/google-cloud-dataproc-metainfo/842f89cf-30e0-405a-9452-1ea0f7eedea3/cluster-seliz-m/Assignment1/spam_text_files/* ./assignment
+sudo gsutil cp -r gs://dataproc-staging-us-central1-1031731324489-ozzu0ijg/google-cloud-dataproc-metainfo/842f89cf-30e0-405a-9452-1ea0f7eedea3/cluster-seliz-m/Assignment1/ham_text_files/* ./assignment
+sudo gsutil cp -r gs://dataproc-staging-us-central1-1031731324489-ozzu0ijg/google-cloud-dataproc-metainfo/842f89cf-30e0-405a-9452-1ea0f7eedea3/cluster-seliz-m/Assignment1/Mapper_programs/* ./assignment
+
+
+hadoop  jar /usr/lib/hadoop/hadoop-streaming-3.2.3.jar -file ./assignment/mapper_1.py -mapper "python mapper_1.py" -file ./assignment/reducer_1.py -reducer "python reducer_1.py" -input /user/seliz_koshy2/cluster-seliz-m/MapReduce/A0000488123JA1KQJTEM8.txt -output ./user/seliz_koshy2/cluster-seliz-m/MapReduce/output_1
+hdfs dfs -ls ./user/seliz_koshy2/cluster-seliz-m/MapReduce/output_1
+hadoop  jar /usr/lib/hadoop/hadoop-streaming-3.2.3.jar -file ./assignment/mapper_2.py -mapper "python mapper_2.py" -file ./assignment/reducer_2.py -reducer "python reducer_2.py" -input user/seliz_koshy2/cluster-seliz-m/MapReduce/output_1/part-0000* -output ./user/seliz_koshy2/cluster-seliz-m/MapReduce/output_2
+hdfs dfs -ls ./user/seliz_koshy2/cluster-seliz-m/MapReduce/output_2
+hadoop  jar /usr/lib/hadoop/hadoop-streaming-3.2.3.jar -file ./assignment/mapper_3.py -mapper "python mapper_3.py" -file ./assignment/reducer_3.py -reducer "python reducer_3.py" -input user/seliz_koshy2/cluster-seliz-m/MapReduce/output_2/part-0000* -output ./user/seliz_koshy2/cluster-seliz-m/MapReduce/output_3
+
+TO VIEW THE OUTPUT FILE
+hdfs dfs -ls ./user/seliz_koshy2/cluster-seliz-m/MapReduce/output_1
+hdfs dfs -ls ./user/seliz_koshy2/cluster-seliz-m/MapReduce/output_2
+hdfs dfs -ls ./user/seliz_koshy2/cluster-seliz-m/MapReduce/output_3
+
+
+
+hdfs dfs -rm -r ./user/seliz_koshy2/cluster-seliz-m/MapReduce/output_3
+hdfs dfs -cat ./user/seliz_koshy2/cluster-seliz-m/MapReduce/output_2/part-00001
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+File: file:/user/seliz_koshy2/cluster-seliz-m/MapReduce/mapper_1.py does not exist.
+
+SET hive.execution.engine=mr;
+
+SELECT * FROM filtered_data LIMIT 5;
+
+DROP TABLE IF EXISTS amazon;
+
+DROP TABLE IF EXISTS processed_data;
+
+select count(*) from amazon where reviewText is NULL;
+select count(*) from amazon where reviewText="NULL";
+
+
+hdfs://cluster-seliz-m/newcsv/top10hamdata
+hdfs dfs -cat hdfs://cluster-seliz-m/user/hive/warehouse/reviewsdb.db/top10spamdata
+hdfs dfs -getmerge hdfs://cluster-seliz-m/user/hive/warehouse/reviewsdb.db/top10spamdata hdfs://cluster-seliz-m/newcsv/top10spamdata.csv
+hdfs://cluster-seliz-m/user/hive/warehouse/reviewsdb.db/top10spamdata
+hdfs dfs -getmerge hdfs://cluster-seliz-m/user/hive/warehouse/reviewsdb.db/top10hamdata top10hamdata.csv
+***********create table processed_data as select SPLIT(REGEXP_REPLACE(reviewtext, '[^0-9A-Za-z ]+', ''),' ') as reviewtext from amazon;
+-- Clean up the text by removing any punctuation and control characters
+CREATE TABLE processed_data AS
+SELECT reviewtext FROM (SELECT (SPLIT(REGEXP_REPLACE(reviewtext,'[^0-9A-Za-z ]+',''),' '))
+AS reviewtext FROM amazon)words ;
+
+CREATE TABLE processed_data AS
+SELECT reviewtext FROM (SELECT (SPLIT(reviewtext,' ')) AS reviewtext FROM amazon);
+
+-- Count the words and filter out the stop words
+CREATE TABLE filtered_data AS
+SELECT reviewtext, COUNT(*) AS count
+FROM (SELECT * FROM processed_data LEFT OUTER JOIN stopwords
+ON (processed_data.reviewtext = stopwords.stop)
+WHERE stop IS NULL) removestopwords
+GROUP BY reviewtext
+ORDER BY count DESC, reviewtext ASC;
+
+CREATE TABLE filtered_data AS
+SELECT * FROM processed_data LEFT OUTER JOIN stopwords
+ON (processed_data.reviewtext != stopwords.stop)
+GROUP BY reviewtext;
+
+Cell_Phones_and_Accessories
+
+
+CREATE TABLE processed_data AS
+SELECT reviewerID,reviewtext FROM (SELECT * FROM amazon LEFT OUTER JOIN stopwords WHERE (amazon.reviewtext = stopwords.stop) WHERE stop IS NULL) removestopwords
+GROUP BY reviewtext,reviewerID;
+
+
+SELECT reviewtext,reviewerID FROM amazon WHERE reviewtext NOT IN (select * from stopwords);
+
+-- Make the Hive output look like the output of the Pig DUMP command
+SELECT CONCAT_WS(',', CONCAT("\(",reviewtext), CONCAT(count,"\)")) FROM filtered_data ORDER BY count DESC, reviewtext ASC limit 10;
+______________________________________________________________________________________________________________________
+******************create table processed_data as select reviewerID, REGEXP_REPLACE(reviewtext, '[^0-9A-Za-z ]+', ''),category,class from amazon1;
+_______________________________________________________________________________________________________________________
+SELECT words, count(1)
+FROM processed_data
+LATERAL VIEW EXPLODE(SPLIT(reviewText, ' ')) expl_words AS words
+GROUP BY words DESC LIMIT 10;
+
+
+SELECT reviewerID,(SELECT word, count(*) AS count FROM processed_data GROUP BY word) as words
+FROM processed_data
+LATERAL VIEW EXPLODE(SPLIT(reviewText, ' ')) expl_words AS words
+GROUP BY words DESC LIMIT 10;
+
+CREATE TABLE processed_data AS
+SELECT reviewtext,reviewerID FROM amazon WHERE reviewtext NOT IN (select * from stopwords);
+  
+SET hive.exec.dynamic.partition=true;
+SET hive.exec.dynamic.partition.mode=non-strict;
+SET hive.enforce.bucketing =true;​
+
+SET hive.vectorized.execution.enabled=false;
+SET hive.vectorized.execution.reduce.enabled=false; 
+select (REGEXP_REPLACE(reviewtext, '[^0-9A-Za-z ]+', '') as reviewtext from amazon;
+insert into table processed_data  
+partition(category)  
+create table processed_data as select reviewerID, REGEXP_REPLACE(reviewtext, '[^0-9A-Za-z ]+', ''),category,class from amazon1;  
+
+https://storage.cloud.google.com/dataproc-staging-us-central1-1031731324489-ozzu0ijg/google-cloud-dataproc-metainfo/842f89cf-30e0-405a-9452-1ea0f7eedea3/cluster-seliz-m/Assignment1/amazon_reviews.csv
+
+create table processed_data as select reviewerID, lower(REGEXP_REPLACE(reviewtext, '[^0-9A-Za-z ]+', '')),category from amazon;
+hdfs://cluster-seliz-m/user/hive/warehouse/reviewsdb.db/spam_data
+
+hadoop fs -cp hdfs://cluster-seliz-m/user/hive/warehouse/reviewsdb.db/spam_data cluster-seliz-m/newcsv/spam_data.csv
+
+CREATE TABLE word_count as SELECT word, count(*)
+FROM spam_data LATERAL VIEW EXPLODE(split(reviewtext, ' '))tempTable as word
+group by word;
+
+
+create table wordcount as select explode(split(reviewtext,' ')) as word from spam_data;
+ALTER TABLE processed_data CHANGE _c1 reviewtext String;
+
+
+
+CREATE TABLE IF NOT EXISTS 
+LOAD DATA INPATH  'cluster-seliz-m/newcsv/stoplist.txt' OVERWRITE INTO TABLE stopwords;
